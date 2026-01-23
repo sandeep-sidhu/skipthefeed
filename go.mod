@@ -1,4 +1,4 @@
-module whatabot
+module skipthefeed
 
 go 1.24.0
 

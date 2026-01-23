@@ -829,7 +829,7 @@
         .logout-btn {
             position: absolute;
             top: 20px;
-            right: 120px;
+            right: 130px;
             background: #334155;
             color: #e2e8f0;
             border: 1px solid #475569;
@@ -837,6 +837,14 @@
 
         .logout-btn:hover {
             background: #475569;
+        }
+
+        .header-buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
         }
 
         /* Settings Panel Styles */
@@ -1227,11 +1235,19 @@
 
         // Settings Panel Component
         function SettingsPanel({ settings, onSave, onResetWelcome, onClose, message }) {
-            const [localSettings, setLocalSettings] = useState(settings);
+            const defaultSettings = {
+                autoDownloadEnabled: true,
+                welcomeMessageEnabled: true,
+                welcomeMessageText: '',
+                welcomeMessagesSentCount: 0
+            };
+            const [localSettings, setLocalSettings] = useState(settings || defaultSettings);
             const [saving, setSaving] = useState(false);
 
             useEffect(() => {
-                setLocalSettings(settings);
+                if (settings) {
+                    setLocalSettings(settings);
+                }
             }, [settings]);
 
             const handleSave = async () => {
@@ -1239,6 +1255,10 @@
                 await onSave(localSettings);
                 setSaving(false);
             };
+
+            if (!localSettings) {
+                return null;
+            }
 
             return (
                 <div className="settings-overlay" onClick={onClose}>
@@ -1258,7 +1278,7 @@
                                 <label className="toggle">
                                     <input
                                         type="checkbox"
-                                        checked={localSettings.autoDownloadEnabled}
+                                        checked={localSettings.autoDownloadEnabled || false}
                                         onChange={e => setLocalSettings(prev => ({ ...prev, autoDownloadEnabled: e.target.checked }))}
                                     />
                                     <span className="toggle-slider"></span>
@@ -1269,12 +1289,12 @@
                             <div className="setting-item">
                                 <div className="setting-info">
                                     <label className="setting-label">Welcome Message</label>
-                                    <p className="setting-desc">Send a one-time message after first download</p>
+                                    <p className="setting-desc">Send a one-time message after first download in each chat</p>
                                 </div>
                                 <label className="toggle">
                                     <input
                                         type="checkbox"
-                                        checked={localSettings.welcomeMessageEnabled}
+                                        checked={localSettings.welcomeMessageEnabled || false}
                                         onChange={e => setLocalSettings(prev => ({ ...prev, welcomeMessageEnabled: e.target.checked }))}
                                     />
                                     <span className="toggle-slider"></span>
@@ -1287,19 +1307,19 @@
                                     <label className="setting-label">Welcome Message Text</label>
                                     <textarea
                                         className="setting-textarea"
-                                        value={localSettings.welcomeMessageText}
+                                        value={localSettings.welcomeMessageText || ''}
                                         onChange={e => setLocalSettings(prev => ({ ...prev, welcomeMessageText: e.target.value }))}
                                         rows={4}
                                         placeholder="Enter your welcome message..."
                                     />
                                     <div className="setting-hint">
-                                        Status: {settings.welcomeMessageSent ?
-                                            <span style={{color: '#22c55e'}}>Already sent</span> :
-                                            <span style={{color: '#f59e0b'}}>Will send on next download</span>
+                                        Status: {(settings && settings.welcomeMessagesSentCount > 0) ?
+                                            <span style={{color: '#22c55e'}}>Sent to {settings.welcomeMessagesSentCount} chat{settings.welcomeMessagesSentCount !== 1 ? 's' : ''}</span> :
+                                            <span style={{color: '#f59e0b'}}>Will send on first download in each chat</span>
                                         }
-                                        {settings.welcomeMessageSent && (
+                                        {(settings && settings.welcomeMessagesSentCount > 0) && (
                                             <button className="btn btn-sm" style={{marginLeft: '10px'}} onClick={onResetWelcome}>
-                                                Send Again
+                                                Reset All
                                             </button>
                                         )}
                                     </div>
@@ -1466,13 +1486,13 @@
             const [lastUpdate, setLastUpdate] = useState(new Date());
             const [uploadMessage, setUploadMessage] = useState(null);
             const [dragging, setDragging] = useState(false);
-            const [showSetup, setShowSetup] = useState(true);
+            const [showSetup, setShowSetup] = useState(false);
             const [showSettings, setShowSettings] = useState(false);
             const [botSettings, setBotSettings] = useState({
                 autoDownloadEnabled: true,
                 welcomeMessageEnabled: true,
                 welcomeMessageText: '',
-                welcomeMessageSent: false
+                welcomeMessagesSentCount: 0
             });
             const [settingsMessage, setSettingsMessage] = useState(null);
             const logsRef = useRef(null);
@@ -1626,12 +1646,12 @@
                 try {
                     const res = await fetch('/api/settings/reset-welcome', { method: 'POST' });
                     if (res.ok) {
-                        setBotSettings(prev => ({ ...prev, welcomeMessageSent: false }));
-                        setSettingsMessage({ type: 'success', text: 'Welcome message will be sent again on next download' });
+                        setBotSettings(prev => ({ ...prev, welcomeMessagesSentCount: 0 }));
+                        setSettingsMessage({ type: 'success', text: 'Welcome messages reset - will be sent again in all chats' });
                         setTimeout(() => setSettingsMessage(null), 3000);
                     }
                 } catch (err) {
-                    setSettingsMessage({ type: 'error', text: 'Failed to reset welcome message' });
+                    setSettingsMessage({ type: 'error', text: 'Failed to reset welcome messages' });
                 }
             };
 
@@ -1712,10 +1732,8 @@
                 return <Login onLoginSuccess={checkAuth} />;
             }
 
-            // Show setup wizard if not WhatsApp authenticated OR if user hasn't dismissed it
-            const isFirstTimeSetup = !status.authenticated || (status.authenticated && showSetup);
-
-            if (isFirstTimeSetup && showSetup) {
+            // Show setup wizard if not WhatsApp authenticated OR if user clicked "Setup" button
+            if (!status.authenticated || showSetup) {
                 return (
                     <SetupWizard
                         status={status}
@@ -1734,28 +1752,32 @@
                     <div className="header">
                         <h1>SKIPTHEFEED</h1>
                         <p>Watch just the video, skip the feed</p>
-                        <button
-                            className="btn logout-btn"
-                            onClick={handleLogout}
-                            title="Logout"
-                        >
-                            Logout
-                        </button>
-                        <button
-                            className="btn"
-                            style={{ position: 'absolute', top: '20px', right: '220px', background: '#334155', color: '#e2e8f0', border: '1px solid #475569' }}
-                            onClick={() => setShowSetup(true)}
-                            title="Setup"
-                        >
-                            Setup
-                        </button>
-                        <button
-                            className="btn btn-settings"
-                            onClick={() => setShowSettings(true)}
-                            title="Settings"
-                        >
-                            ⚙️ Settings
-                        </button>
+                        <div className="header-buttons">
+                            <button
+                                className="btn"
+                                style={{ background: '#334155', color: '#e2e8f0', border: '1px solid #475569' }}
+                                onClick={() => setShowSetup(true)}
+                                title="Setup"
+                            >
+                                Setup
+                            </button>
+                            <button
+                                className="btn"
+                                style={{ background: '#334155', color: '#e2e8f0', border: '1px solid #475569' }}
+                                onClick={() => setShowSettings(true)}
+                                title="Settings"
+                            >
+                                ⚙️ Settings
+                            </button>
+                            <button
+                                className="btn"
+                                style={{ background: '#334155', color: '#e2e8f0', border: '1px solid #475569' }}
+                                onClick={handleLogout}
+                                title="Logout"
+                            >
+                                Logout
+                            </button>
+                        </div>
                     </div>
 
                     {/* Settings Panel */}

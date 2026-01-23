@@ -72,7 +72,6 @@ type BotSettings struct {
 	AutoDownloadEnabled   bool   `json:"autoDownloadEnabled"`
 	WelcomeMessageEnabled bool   `json:"welcomeMessageEnabled"`
 	WelcomeMessageText    string `json:"welcomeMessageText"`
-	WelcomeMessageSent    bool   `json:"welcomeMessageSent"`
 }
 
 var (
@@ -184,7 +183,6 @@ func loadBotSettings() error {
 				AutoDownloadEnabled:   true,
 				WelcomeMessageEnabled: true,
 				WelcomeMessageText:    defaultWelcomeMessage,
-				WelcomeMessageSent:    false,
 			}
 			return saveBotSettings()
 		}
@@ -330,6 +328,18 @@ func initDownloadsDB() error {
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to create download_stats table: %w", err)
+	}
+
+	// Create table to track which chats have received the welcome message
+	_, err = downloadsDB.Exec(`
+		CREATE TABLE IF NOT EXISTS welcome_messages_sent (
+			chat_jid TEXT PRIMARY KEY,
+			chat_name TEXT,
+			sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create welcome_messages_sent table: %w", err)
 	}
 
 	return nil
@@ -848,21 +858,64 @@ func isVideoFile(path string) bool {
 	return ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".mov" || ext == ".avi"
 }
 
-// shouldSendWelcomeMessage checks if the welcome message should be sent
-func shouldSendWelcomeMessage() bool {
+// shouldSendWelcomeMessage checks if the welcome message should be sent for a specific chat
+func shouldSendWelcomeMessage(chatJID string) bool {
 	botSettingsMu.RLock()
-	defer botSettingsMu.RUnlock()
-	return botSettings != nil && botSettings.WelcomeMessageEnabled && !botSettings.WelcomeMessageSent
+	enabled := botSettings != nil && botSettings.WelcomeMessageEnabled
+	botSettingsMu.RUnlock()
+
+	if !enabled || downloadsDB == nil {
+		return false
+	}
+
+	// Check if this chat has already received the welcome message
+	var count int
+	err := downloadsDB.QueryRow("SELECT COUNT(*) FROM welcome_messages_sent WHERE chat_jid = ?", chatJID).Scan(&count)
+	if err != nil {
+		logBoth("ERROR", "Failed to check welcome message status: %v", err)
+		return false
+	}
+
+	return count == 0
 }
 
-// markWelcomeMessageSent marks the welcome message as sent and saves settings
-func markWelcomeMessageSent() {
-	botSettingsMu.Lock()
-	if botSettings != nil {
-		botSettings.WelcomeMessageSent = true
+// markWelcomeMessageSent marks the welcome message as sent for a specific chat
+func markWelcomeMessageSent(chatJID, chatName string) {
+	if downloadsDB == nil {
+		return
 	}
-	botSettingsMu.Unlock()
-	saveBotSettings()
+
+	_, err := downloadsDB.Exec(
+		"INSERT OR REPLACE INTO welcome_messages_sent (chat_jid, chat_name) VALUES (?, ?)",
+		chatJID, chatName,
+	)
+	if err != nil {
+		logBoth("ERROR", "Failed to mark welcome message as sent: %v", err)
+	}
+}
+
+// resetAllWelcomeMessages clears the welcome message sent status for all chats
+func resetAllWelcomeMessages() error {
+	if downloadsDB == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	_, err := downloadsDB.Exec("DELETE FROM welcome_messages_sent")
+	return err
+}
+
+// getWelcomeMessagesSentCount returns the number of chats that have received the welcome message
+func getWelcomeMessagesSentCount() int {
+	if downloadsDB == nil {
+		return 0
+	}
+
+	var count int
+	err := downloadsDB.QueryRow("SELECT COUNT(*) FROM welcome_messages_sent").Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
 }
 
 // getWelcomeMessageText returns the configured welcome message
@@ -950,11 +1003,11 @@ func downloadAndSendVideo(chatJID types.JID, chatName, url string) {
 	logBoth("INFO", "Successfully sent %d/%d media files to chat %s (%s)", successCount, len(mediaPaths), chatJID.String(), chatName)
 	recordDownload(chatJID.String(), chatName, url, platform, true)
 
-	// Send one-time welcome message after first successful download
-	if shouldSendWelcomeMessage() {
+	// Send welcome message if this chat hasn't received one yet
+	if shouldSendWelcomeMessage(chatJID.String()) {
 		sendTextMessage(chatJID, getWelcomeMessageText())
-		markWelcomeMessageSent()
-		logBoth("INFO", "Sent one-time welcome message")
+		markWelcomeMessageSent(chatJID.String(), chatName)
+		logBoth("INFO", "Sent welcome message to chat %s (%s)", chatJID.String(), chatName)
 	}
 }
 
@@ -1374,24 +1427,36 @@ func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// SettingsResponse includes bot settings plus welcome message stats
+type SettingsResponse struct {
+	AutoDownloadEnabled      bool   `json:"autoDownloadEnabled"`
+	WelcomeMessageEnabled    bool   `json:"welcomeMessageEnabled"`
+	WelcomeMessageText       string `json:"welcomeMessageText"`
+	WelcomeMessagesSentCount int    `json:"welcomeMessagesSentCount"`
+}
+
 // handleAPIGetSettings returns bot settings
 func handleAPIGetSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	botSettingsMu.RLock()
-	defer botSettingsMu.RUnlock()
+	settings := botSettings
+	botSettingsMu.RUnlock()
 
-	if botSettings == nil {
-		json.NewEncoder(w).Encode(BotSettings{
-			AutoDownloadEnabled:   true,
-			WelcomeMessageEnabled: true,
-			WelcomeMessageText:    defaultWelcomeMessage,
-			WelcomeMessageSent:    false,
-		})
-		return
+	resp := SettingsResponse{
+		AutoDownloadEnabled:      true,
+		WelcomeMessageEnabled:    true,
+		WelcomeMessageText:       defaultWelcomeMessage,
+		WelcomeMessagesSentCount: getWelcomeMessagesSentCount(),
 	}
 
-	json.NewEncoder(w).Encode(botSettings)
+	if settings != nil {
+		resp.AutoDownloadEnabled = settings.AutoDownloadEnabled
+		resp.WelcomeMessageEnabled = settings.WelcomeMessageEnabled
+		resp.WelcomeMessageText = settings.WelcomeMessageText
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleAPIUpdateSettings updates bot settings
@@ -1414,8 +1479,6 @@ func handleAPIUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	botSettings.AutoDownloadEnabled = newSettings.AutoDownloadEnabled
 	botSettings.WelcomeMessageEnabled = newSettings.WelcomeMessageEnabled
 	botSettings.WelcomeMessageText = newSettings.WelcomeMessageText
-	// Don't allow resetting WelcomeMessageSent to false via this endpoint
-	// Use the dedicated reset endpoint instead
 	botSettingsMu.Unlock()
 
 	if err := saveBotSettings(); err != nil {
@@ -1428,27 +1491,21 @@ func handleAPIUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Settings saved"})
 }
 
-// handleAPIResetWelcome resets the welcome message sent flag
+// handleAPIResetWelcome resets the welcome message sent status for all chats
 func handleAPIResetWelcome(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	botSettingsMu.Lock()
-	if botSettings != nil {
-		botSettings.WelcomeMessageSent = false
-	}
-	botSettingsMu.Unlock()
-
-	if err := saveBotSettings(); err != nil {
-		http.Error(w, "Failed to save settings", http.StatusInternalServerError)
+	if err := resetAllWelcomeMessages(); err != nil {
+		http.Error(w, "Failed to reset welcome messages", http.StatusInternalServerError)
 		return
 	}
 
-	logBoth("INFO", "Welcome message flag reset - will send again on next download")
+	logBoth("INFO", "Welcome messages reset - will send again to all chats")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Welcome message will be sent again"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Welcome message will be sent again to all chats"})
 }
 
 // handleAPIUploadCookies handles Instagram cookies file upload
