@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkipTheFeed Dashboard</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 1px solid #334155;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #22c55e, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: #94a3b8;
+            margin-top: 8px;
+        }
+
+        .btn-settings {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #334155;
+            color: #e2e8f0;
+            border: 1px solid #475569;
+        }
+
+        .btn-settings:hover {
+            background: #475569;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid #334155;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            margin-bottom: 16px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #22c55e;
+            box-shadow: 0 0 10px #22c55e;
+        }
+
+        .status-dot.disconnected {
+            background: #ef4444;
+            box-shadow: 0 0 10px #ef4444;
+        }
+
+        .status-dot.pending {
+            background: #f59e0b;
+            box-shadow: 0 0 10px #f59e0b;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+
+        .qr-container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .qr-container canvas {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .qr-instructions {
+            margin-top: 16px;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        .setup-card {
+            grid-column: 1 / -1;
+        }
+
+        .setup-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .setup-step {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #334155;
+        }
+
+        .setup-step h3 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            color: #e2e8f0;
+        }
+
+        .step-number {
+            width: 28px;
+            height: 28px;
+            background: #3b82f6;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .step-done {
+            background: #22c55e;
+        }
+
+        .upload-area {
+            border: 2px dashed #334155;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .upload-area:hover {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .upload-area.dragging {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.875rem;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+
+        th {
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+
+        .platform-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 4px;
+            font-weight: 500;
+        }
+
+        .platform-instagram { background: #c026d3; }
+        .platform-twitter { background: #0ea5e9; }
+        .platform-facebook { background: #2563eb; }
+        .platform-youtube { background: #ef4444; }
+
+        .logs-card {
+            grid-column: 1 / -1;
+        }
+
+        .logs-container {
+            background: #0f172a;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+
+        .log-timestamp {
+            color: #64748b;
+        }
+
+        .log-level-INFO { color: #3b82f6; }
+        .log-level-ERROR { color: #ef4444; }
+        .log-level-WARN { color: #f59e0b; }
+        .log-level-DEBUG { color: #8b5cf6; }
+
+        .log-message {
+            color: #e2e8f0;
+        }
+
+        .platform-stats {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .platform-stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .platform-stat .count {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .refresh-indicator {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-align: right;
+            margin-top: 10px;
+        }
+
+        .loading {
+            color: #64748b;
+            font-style: italic;
+        }
+
+        .success-message {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid #22c55e;
+            color: #22c55e;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+
+        /* Setup Wizard Styles */
+        .setup-wizard {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .setup-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .setup-header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #22c55e, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+
+        .setup-header p {
+            color: #94a3b8;
+            font-size: 1.25rem;
+        }
+
+        .setup-content {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .setup-step-card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 2px solid #334155;
+            transition: all 0.3s;
+        }
+
+        .setup-step-card.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+        }
+
+        .setup-step-card.completed {
+            border-color: #22c55e;
+        }
+
+        .setup-step-card.pending {
+            opacity: 0.6;
+        }
+
+        .step-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .step-badge {
+            width: 40px;
+            height: 40px;
+            background: #334155;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.125rem;
+            flex-shrink: 0;
+        }
+
+        .step-badge.done {
+            background: #22c55e;
+            color: white;
+        }
+
+        .step-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .step-header p {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .optional-tag {
+            background: #334155;
+            color: #94a3b8;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .step-content {
+            padding-left: 56px;
+        }
+
+        .qr-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .qr-section canvas {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .qr-help {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+            width: 100%;
+        }
+
+        .qr-help strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #e2e8f0;
+        }
+
+        .qr-help ol {
+            color: #94a3b8;
+            padding-left: 20px;
+            line-height: 1.8;
+        }
+
+        .success-box {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid #22c55e;
+            color: #22c55e;
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .success-icon {
+            font-size: 1.5rem;
+        }
+
+        .error-box {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .loading-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #94a3b8;
+            padding: 20px;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .upload-zone {
+            border: 2px dashed #334155;
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 16px;
+        }
+
+        .upload-zone:hover:not(.disabled) {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .upload-zone.dragging {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .upload-zone.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .upload-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .upload-text {
+            color: #94a3b8;
+        }
+
+        .cookies-help {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .cookies-help strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #e2e8f0;
+        }
+
+        .cookies-help ol {
+            color: #94a3b8;
+            padding-left: 20px;
+            line-height: 1.8;
+        }
+
+        .setup-complete {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(59, 130, 246, 0.1));
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+        }
+
+        .setup-complete h2 {
+            font-size: 1.5rem;
+            margin-bottom: 12px;
+        }
+
+        .setup-complete > p {
+            color: #94a3b8;
+            margin-bottom: 24px;
+        }
+
+        .usage-guide {
+            text-align: left;
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .usage-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #334155;
+            color: #94a3b8;
+        }
+
+        .usage-item:last-child {
+            border-bottom: none;
+        }
+
+        .usage-item strong {
+            color: #e2e8f0;
+        }
+
+        .usage-item code {
+            background: #334155;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #22c55e;
+        }
+
+        /* Instagram Setup Styles */
+        .instagram-setup {
+            width: 100%;
+        }
+
+        .input-label {
+            display: block;
+            color: #e2e8f0;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .session-input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .session-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 0.875rem;
+            font-family: monospace;
+        }
+
+        .session-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .session-input::placeholder {
+            color: #64748b;
+        }
+
+        .session-input:disabled {
+            opacity: 0.6;
+        }
+
+        .advanced-toggle {
+            margin-top: 20px;
+            padding: 12px;
+            background: #0f172a;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #94a3b8;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .advanced-toggle:hover {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+
+        .cookies-help code {
+            background: #334155;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #22c55e;
+        }
+
+        /* Auth Styles */
+        .auth-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .auth-card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            border: 1px solid #334155;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .auth-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #22c55e, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .auth-header p {
+            color: #94a3b8;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            color: #e2e8f0;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 1rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .form-input::placeholder {
+            color: #64748b;
+        }
+
+        .form-input:disabled {
+            opacity: 0.6;
+        }
+
+        .btn-full {
+            width: 100%;
+            padding: 14px;
+            font-size: 1rem;
+        }
+
+        .auth-info {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid #3b82f6;
+            color: #93c5fd;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .auth-info strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #3b82f6;
+        }
+
+        .security-warning {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .security-warning strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #ef4444;
+        }
+
+        .security-warning ul {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+        }
+
+        .security-warning li {
+            margin-bottom: 4px;
+        }
+
+        .logout-btn {
+            position: absolute;
+            top: 20px;
+            right: 120px;
+            background: #334155;
+            color: #e2e8f0;
+            border: 1px solid #475569;
+        }
+
+        .logout-btn:hover {
+            background: #475569;
+        }
+
+        /* Settings Panel Styles */
+        .settings-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .settings-panel {
+            background: #1e293b;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid #334155;
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .settings-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+
+        .btn-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .btn-close:hover {
+            color: #e2e8f0;
+        }
+
+        .settings-content {
+            padding: 24px;
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid #334155;
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-item-full {
+            padding: 16px 0;
+            border-bottom: 1px solid #334155;
+        }
+
+        .setting-info {
+            flex: 1;
+        }
+
+        .setting-label {
+            display: block;
+            font-weight: 500;
+            color: #e2e8f0;
+            margin-bottom: 4px;
+        }
+
+        .setting-desc {
+            color: #94a3b8;
+            font-size: 0.875rem;
+            margin: 0;
+        }
+
+        .setting-textarea {
+            width: 100%;
+            padding: 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 0.875rem;
+            resize: vertical;
+            margin-top: 8px;
+            font-family: inherit;
+        }
+
+        .setting-textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .setting-hint {
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .settings-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            border-top: 1px solid #334155;
+        }
+
+        /* Toggle Switch */
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 26px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #334155;
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #e2e8f0;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background-color: #22c55e;
+        }
+
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(22px);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // QR Code component using API
+        function QRCodeImage({ data, size = 256 }) {
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`;
+            return <img src={qrUrl} alt="QR Code" style={{ background: 'white', padding: '16px', borderRadius: '12px' }} />;
+        }
+
+        // Instagram Setup Component
+        function InstagramSetup({ disabled, uploadMessage, fileInputRef, onFileUpload, dragging, setDragging }) {
+            const [sessionId, setSessionId] = useState('');
+            const [showAdvanced, setShowAdvanced] = useState(false);
+            const [submitting, setSubmitting] = useState(false);
+            const [localMessage, setLocalMessage] = useState(null);
+
+            const handleSessionSubmit = async () => {
+                if (!sessionId.trim()) {
+                    setLocalMessage({ type: 'error', text: 'Please enter a session ID' });
+                    return;
+                }
+
+                setSubmitting(true);
+                setLocalMessage(null);
+
+                try {
+                    const res = await fetch('/api/instagram-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId: sessionId.trim() })
+                    });
+
+                    if (res.ok) {
+                        setLocalMessage({ type: 'success', text: 'Instagram session saved!' });
+                        setSessionId('');
+                    } else {
+                        const err = await res.text();
+                        setLocalMessage({ type: 'error', text: err || 'Failed to save session' });
+                    }
+                } catch (err) {
+                    setLocalMessage({ type: 'error', text: 'Failed to save session' });
+                } finally {
+                    setSubmitting(false);
+                }
+            };
+
+            if (disabled) {
+                return (
+                    <div className="upload-zone disabled">
+                        <div className="upload-text">Complete step 1 first</div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="instagram-setup">
+                    <div className="session-input-section">
+                        <label className="input-label">Paste your Instagram Session ID:</label>
+                        <div className="session-input-row">
+                            <input
+                                type="text"
+                                className="session-input"
+                                placeholder="e.g., 58742934872%3AbC9dEf..."
+                                value={sessionId}
+                                onChange={(e) => setSessionId(e.target.value)}
+                                disabled={submitting}
+                            />
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSessionSubmit}
+                                disabled={submitting || !sessionId.trim()}
+                            >
+                                {submitting ? 'Saving...' : 'Save'}
+                            </button>
+                        </div>
+
+                        {localMessage && (
+                            <div className={localMessage.type === 'success' ? 'success-box' : 'error-box'} style={{marginTop: '12px'}}>
+                                {localMessage.text}
+                            </div>
+                        )}
+
+                        <div className="cookies-help" style={{marginTop: '16px'}}>
+                            <strong>How to get your Session ID:</strong>
+                            <ol>
+                                <li>Open <a href="https://www.instagram.com" target="_blank" rel="noopener" style={{color: '#3b82f6'}}>instagram.com</a> and log in</li>
+                                <li>Press F12 to open Developer Tools</li>
+                                <li><strong>Firefox:</strong> Storage → Cookies → instagram.com<br/>
+                                    <strong>Chrome:</strong> Application → Cookies → instagram.com</li>
+                                <li>Find <code>sessionid</code> and copy its value</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div className="advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}>
+                        {showAdvanced ? '▼' : '▶'} Advanced: Upload cookies.txt file
+                    </div>
+
+                    {showAdvanced && (
+                        <div style={{marginTop: '12px'}}>
+                            <div
+                                className={`upload-zone ${dragging ? 'dragging' : ''}`}
+                                onDrop={(e) => { e.preventDefault(); setDragging(false); onFileUpload(e.dataTransfer.files[0]); }}
+                                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                                onDragLeave={() => setDragging(false)}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    style={{ display: 'none' }}
+                                    accept=".txt"
+                                    onChange={(e) => onFileUpload(e.target.files[0])}
+                                />
+                                <div className="upload-icon">📁</div>
+                                <div className="upload-text">Drop cookies.txt here or click to upload</div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Login Component
+        function Login({ onLoginSuccess }) {
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+
+                try {
+                    const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    if (res.ok) {
+                        onLoginSuccess();
+                    } else {
+                        const text = await res.text();
+                        setError(text || 'Login failed');
+                    }
+                } catch (err) {
+                    setError('Failed to connect to server');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="auth-container">
+                    <div className="auth-card">
+                        <div className="auth-header">
+                            <h1>SkipTheFeed</h1>
+                            <p>Sign in to your dashboard</p>
+                        </div>
+
+                        <div className="security-warning">
+                            <strong>Security Notice</strong>
+                            <ul>
+                                <li>Run this application locally only - never expose to the internet</li>
+                                <li>This bot has access to ALL your WhatsApp messages</li>
+                                <li>Only run on devices and networks you trust</li>
+                            </ul>
+                        </div>
+
+                        <div className="auth-info">
+                            <strong>Credentials</strong>
+                            Check the Docker container logs for your username and password.
+                        </div>
+
+                        <form onSubmit={handleSubmit}>
+                            <div className="form-group">
+                                <label className="form-label">Username</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Enter your username"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    disabled={loading}
+                                    required
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Password</label>
+                                <input
+                                    type="password"
+                                    className="form-input"
+                                    placeholder="Enter your password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    disabled={loading}
+                                    required
+                                />
+                            </div>
+
+                            {error && <div className="error-box" style={{marginBottom: '20px'}}>{error}</div>}
+
+                            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
+                                {loading ? 'Signing in...' : 'Sign In'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Settings Panel Component
+        function SettingsPanel({ settings, onSave, onResetWelcome, onClose, message }) {
+            const [localSettings, setLocalSettings] = useState(settings);
+            const [saving, setSaving] = useState(false);
+
+            useEffect(() => {
+                setLocalSettings(settings);
+            }, [settings]);
+
+            const handleSave = async () => {
+                setSaving(true);
+                await onSave(localSettings);
+                setSaving(false);
+            };
+
+            return (
+                <div className="settings-overlay" onClick={onClose}>
+                    <div className="settings-panel" onClick={e => e.stopPropagation()}>
+                        <div className="settings-header">
+                            <h2>Settings</h2>
+                            <button className="btn-close" onClick={onClose}>×</button>
+                        </div>
+
+                        <div className="settings-content">
+                            {/* Auto Download Toggle */}
+                            <div className="setting-item">
+                                <div className="setting-info">
+                                    <label className="setting-label">Auto-Download</label>
+                                    <p className="setting-desc">Automatically download videos when links are shared</p>
+                                </div>
+                                <label className="toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={localSettings.autoDownloadEnabled}
+                                        onChange={e => setLocalSettings(prev => ({ ...prev, autoDownloadEnabled: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            {/* Welcome Message Toggle */}
+                            <div className="setting-item">
+                                <div className="setting-info">
+                                    <label className="setting-label">Welcome Message</label>
+                                    <p className="setting-desc">Send a one-time message after first download</p>
+                                </div>
+                                <label className="toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={localSettings.welcomeMessageEnabled}
+                                        onChange={e => setLocalSettings(prev => ({ ...prev, welcomeMessageEnabled: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            {/* Welcome Message Text */}
+                            {localSettings.welcomeMessageEnabled && (
+                                <div className="setting-item-full">
+                                    <label className="setting-label">Welcome Message Text</label>
+                                    <textarea
+                                        className="setting-textarea"
+                                        value={localSettings.welcomeMessageText}
+                                        onChange={e => setLocalSettings(prev => ({ ...prev, welcomeMessageText: e.target.value }))}
+                                        rows={4}
+                                        placeholder="Enter your welcome message..."
+                                    />
+                                    <div className="setting-hint">
+                                        Status: {settings.welcomeMessageSent ?
+                                            <span style={{color: '#22c55e'}}>Already sent</span> :
+                                            <span style={{color: '#f59e0b'}}>Will send on next download</span>
+                                        }
+                                        {settings.welcomeMessageSent && (
+                                            <button className="btn btn-sm" style={{marginLeft: '10px'}} onClick={onResetWelcome}>
+                                                Send Again
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {message && (
+                                <div className={message.type === 'success' ? 'success-box' : 'error-box'}>
+                                    {message.text}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="settings-footer">
+                            <button className="btn" onClick={onClose}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                                {saving ? 'Saving...' : 'Save Settings'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Setup Wizard Component
+        function SetupWizard({ status, onFileUpload, uploadMessage, dragging, setDragging, fileInputRef, onComplete }) {
+            return (
+                <div className="setup-wizard">
+                    <div className="setup-header">
+                        <h1>Welcome to SkipTheFeed</h1>
+                        <p>Let's get you set up in just a few steps</p>
+                    </div>
+
+                    <div className="security-warning" style={{maxWidth: '600px', margin: '0 auto 24px auto'}}>
+                        <strong>Security Notice</strong>
+                        <ul>
+                            <li>Run this application locally only - never expose to the internet</li>
+                            <li>This bot has access to ALL your WhatsApp messages</li>
+                            <li>Only run on devices and networks you trust</li>
+                        </ul>
+                    </div>
+
+                    <div className="setup-content">
+                        {/* Step 1: WhatsApp Authentication */}
+                        <div className={`setup-step-card ${status.authenticated ? 'completed' : 'active'}`}>
+                            <div className="step-header">
+                                <div className={`step-badge ${status.authenticated ? 'done' : ''}`}>
+                                    {status.authenticated ? '✓' : '1'}
+                                </div>
+                                <div>
+                                    <h2>Connect WhatsApp</h2>
+                                    <p>Scan the QR code with your phone</p>
+                                </div>
+                            </div>
+
+                            <div className="step-content">
+                                {status.authenticated ? (
+                                    <div className="success-box">
+                                        <span className="success-icon">✓</span>
+                                        <span>WhatsApp connected successfully!</span>
+                                    </div>
+                                ) : status.qrCode ? (
+                                    <div className="qr-section">
+                                        <QRCodeImage data={status.qrCode} size={280} />
+                                        <div className="qr-help">
+                                            <strong>How to scan:</strong>
+                                            <ol>
+                                                <li>Open WhatsApp on your phone</li>
+                                                <li>Go to Settings → Linked Devices</li>
+                                                <li>Tap "Link a Device"</li>
+                                                <li>Point your camera at this QR code</li>
+                                            </ol>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="loading-box">
+                                        <div className="spinner"></div>
+                                        <span>Connecting to WhatsApp...</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Step 2: Instagram Session (Optional) */}
+                        <div className={`setup-step-card ${status.authenticated ? 'active' : 'pending'}`}>
+                            <div className="step-header">
+                                <div className={`step-badge ${status.instagramCookiesSet ? 'done' : ''}`}>
+                                    {status.instagramCookiesSet ? '✓' : '2'}
+                                </div>
+                                <div>
+                                    <h2>Instagram Login <span className="optional-tag">Optional</span></h2>
+                                    <p>Required for downloading Instagram content</p>
+                                </div>
+                            </div>
+
+                            <div className="step-content">
+                                {status.instagramCookiesSet ? (
+                                    <div className="success-box">
+                                        <span className="success-icon">✓</span>
+                                        <span>Instagram session configured!</span>
+                                    </div>
+                                ) : (
+                                    <InstagramSetup
+                                        disabled={!status.authenticated}
+                                        onSuccess={() => {}}
+                                        uploadMessage={uploadMessage}
+                                        fileInputRef={fileInputRef}
+                                        onFileUpload={onFileUpload}
+                                        dragging={dragging}
+                                        setDragging={setDragging}
+                                    />
+                                )}
+                                {uploadMessage && (
+                                    <div className={uploadMessage.type === 'success' ? 'success-box' : 'error-box'} style={{marginTop: '12px'}}>
+                                        {uploadMessage.text}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Ready to Go */}
+                        {status.authenticated && (
+                            <div className="setup-complete">
+                                <h2>🎉 You're all set!</h2>
+                                <p>SkipTheFeed is now running. Here's how to use it:</p>
+                                <div className="usage-guide">
+                                    <div className="usage-item">
+                                        <strong>Auto-download:</strong> Send any video link and SkipTheFeed will automatically download it
+                                    </div>
+                                    <div className="usage-item">
+                                        <strong>Auto-delete:</strong> The original message with the link will be deleted
+                                    </div>
+                                    <div className="usage-item">
+                                        <strong>Supported:</strong> Instagram, YouTube, Twitter/X, Facebook
+                                    </div>
+                                </div>
+                                <button
+                                    className="btn btn-primary"
+                                    style={{ marginTop: '24px', padding: '14px 32px', fontSize: '1rem' }}
+                                    onClick={onComplete}
+                                >
+                                    Continue to Dashboard →
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            // Auth state
+            const [authStatus, setAuthStatus] = useState({ setupDone: null, loggedIn: false });
+            const [authLoading, setAuthLoading] = useState(true);
+
+            const [status, setStatus] = useState({
+                connected: false,
+                authenticated: false,
+                qrCode: '',
+                instagramCookiesSet: false
+            });
+            const [stats, setStats] = useState({ total: 0, byUser: [], byPlatform: {} });
+            const [logs, setLogs] = useState([]);
+            const [lastUpdate, setLastUpdate] = useState(new Date());
+            const [uploadMessage, setUploadMessage] = useState(null);
+            const [dragging, setDragging] = useState(false);
+            const [showSetup, setShowSetup] = useState(true);
+            const [showSettings, setShowSettings] = useState(false);
+            const [botSettings, setBotSettings] = useState({
+                autoDownloadEnabled: true,
+                welcomeMessageEnabled: true,
+                welcomeMessageText: '',
+                welcomeMessageSent: false
+            });
+            const [settingsMessage, setSettingsMessage] = useState(null);
+            const logsRef = useRef(null);
+            const fileInputRef = useRef(null);
+
+            // Check auth status
+            const checkAuth = async () => {
+                try {
+                    const res = await fetch('/api/auth/status');
+                    const data = await res.json();
+                    setAuthStatus(data);
+                } catch (err) {
+                    console.error('Failed to check auth:', err);
+                } finally {
+                    setAuthLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                checkAuth();
+            }, []);
+
+            // Fetch status (only when logged in)
+            useEffect(() => {
+                if (!authStatus.loggedIn && authStatus.setupDone) return;
+
+                const fetchStatus = async () => {
+                    try {
+                        const res = await fetch('/api/status');
+                        if (res.status === 401) {
+                            setAuthStatus(prev => ({ ...prev, loggedIn: false }));
+                            return;
+                        }
+                        const data = await res.json();
+                        setStatus(data);
+                    } catch (err) {
+                        console.error('Failed to fetch status:', err);
+                    }
+                };
+
+                fetchStatus();
+                const interval = setInterval(fetchStatus, 3000);
+                return () => clearInterval(interval);
+            }, [authStatus.loggedIn, authStatus.setupDone]);
+
+            // Fetch stats (only when logged in)
+            useEffect(() => {
+                if (!authStatus.loggedIn && authStatus.setupDone) return;
+
+                const fetchStats = async () => {
+                    try {
+                        const res = await fetch('/api/stats/today');
+                        if (res.status === 401) {
+                            setAuthStatus(prev => ({ ...prev, loggedIn: false }));
+                            return;
+                        }
+                        const data = await res.json();
+                        setStats(data);
+                        setLastUpdate(new Date());
+                    } catch (err) {
+                        console.error('Failed to fetch stats:', err);
+                    }
+                };
+
+                fetchStats();
+                const interval = setInterval(fetchStats, 10000);
+                return () => clearInterval(interval);
+            }, [authStatus.loggedIn, authStatus.setupDone]);
+
+            // SSE for logs (only when logged in)
+            useEffect(() => {
+                if (!authStatus.loggedIn && authStatus.setupDone) return;
+
+                const eventSource = new EventSource('/api/logs');
+
+                eventSource.onmessage = (event) => {
+                    try {
+                        const logEntry = JSON.parse(event.data);
+                        setLogs(prev => {
+                            const newLogs = [...prev, logEntry];
+                            if (newLogs.length > 500) {
+                                return newLogs.slice(-500);
+                            }
+                            return newLogs;
+                        });
+                    } catch (err) {
+                        console.error('Failed to parse log:', err);
+                    }
+                };
+
+                eventSource.onerror = () => {
+                    console.error('SSE connection error');
+                    eventSource.close();
+                };
+
+                return () => eventSource.close();
+            }, [authStatus.loggedIn, authStatus.setupDone]);
+
+            // Logout handler
+            const handleLogout = async () => {
+                try {
+                    await fetch('/api/auth/logout', { method: 'POST' });
+                    setAuthStatus({ setupDone: true, loggedIn: false });
+                    setLogs([]);
+                } catch (err) {
+                    console.error('Logout failed:', err);
+                }
+            };
+
+            // Fetch bot settings
+            const fetchSettings = async () => {
+                try {
+                    const res = await fetch('/api/settings');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setBotSettings(data);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch settings:', err);
+                }
+            };
+
+            useEffect(() => {
+                if (authStatus.loggedIn) {
+                    fetchSettings();
+                }
+            }, [authStatus.loggedIn]);
+
+            // Save bot settings
+            const saveSettings = async (newSettings) => {
+                try {
+                    const res = await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newSettings)
+                    });
+                    if (res.ok) {
+                        setBotSettings(prev => ({ ...prev, ...newSettings }));
+                        setSettingsMessage({ type: 'success', text: 'Settings saved!' });
+                        setTimeout(() => setSettingsMessage(null), 3000);
+                    } else {
+                        setSettingsMessage({ type: 'error', text: 'Failed to save settings' });
+                    }
+                } catch (err) {
+                    setSettingsMessage({ type: 'error', text: 'Failed to save settings' });
+                }
+            };
+
+            // Reset welcome message
+            const resetWelcomeMessage = async () => {
+                try {
+                    const res = await fetch('/api/settings/reset-welcome', { method: 'POST' });
+                    if (res.ok) {
+                        setBotSettings(prev => ({ ...prev, welcomeMessageSent: false }));
+                        setSettingsMessage({ type: 'success', text: 'Welcome message will be sent again on next download' });
+                        setTimeout(() => setSettingsMessage(null), 3000);
+                    }
+                } catch (err) {
+                    setSettingsMessage({ type: 'error', text: 'Failed to reset welcome message' });
+                }
+            };
+
+            // Auto-scroll logs
+            useEffect(() => {
+                if (logsRef.current) {
+                    logsRef.current.scrollTop = logsRef.current.scrollHeight;
+                }
+            }, [logs]);
+
+            const handleFileUpload = async (file) => {
+                if (!file) return;
+
+                try {
+                    const text = await file.text();
+                    const res = await fetch('/api/cookies', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: text
+                    });
+
+                    if (res.ok) {
+                        setUploadMessage({ type: 'success', text: 'Cookies uploaded successfully!' });
+                        setTimeout(() => setUploadMessage(null), 5000);
+                    } else {
+                        const err = await res.text();
+                        setUploadMessage({ type: 'error', text: err });
+                    }
+                } catch (err) {
+                    setUploadMessage({ type: 'error', text: 'Failed to upload cookies' });
+                }
+            };
+
+            const handleDeleteCookies = async () => {
+                if (!confirm('Are you sure you want to delete Instagram cookies?')) return;
+
+                try {
+                    const res = await fetch('/api/cookies', { method: 'DELETE' });
+                    if (res.ok) {
+                        setUploadMessage({ type: 'success', text: 'Cookies deleted!' });
+                        setTimeout(() => setUploadMessage(null), 5000);
+                    }
+                } catch (err) {
+                    setUploadMessage({ type: 'error', text: 'Failed to delete cookies' });
+                }
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragging(false);
+                const file = e.dataTransfer.files[0];
+                if (file) handleFileUpload(file);
+            };
+
+            const getPlatformClass = (platform) => {
+                const p = platform.toLowerCase();
+                if (p.includes('instagram')) return 'platform-instagram';
+                if (p.includes('twitter')) return 'platform-twitter';
+                if (p.includes('facebook')) return 'platform-facebook';
+                if (p.includes('youtube')) return 'platform-youtube';
+                return '';
+            };
+
+            // Show loading while checking auth
+            if (authLoading) {
+                return (
+                    <div className="auth-container">
+                        <div className="loading-box">
+                            <div className="spinner"></div>
+                            <span>Loading...</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Show login if not logged in
+            if (!authStatus.loggedIn) {
+                return <Login onLoginSuccess={checkAuth} />;
+            }
+
+            // Show setup wizard if not WhatsApp authenticated OR if user hasn't dismissed it
+            const isFirstTimeSetup = !status.authenticated || (status.authenticated && showSetup);
+
+            if (isFirstTimeSetup && showSetup) {
+                return (
+                    <SetupWizard
+                        status={status}
+                        onFileUpload={handleFileUpload}
+                        uploadMessage={uploadMessage}
+                        dragging={dragging}
+                        setDragging={setDragging}
+                        fileInputRef={fileInputRef}
+                        onComplete={() => setShowSetup(false)}
+                    />
+                );
+            }
+
+            return (
+                <div className="container">
+                    <div className="header">
+                        <h1>SKIPTHEFEED</h1>
+                        <p>Watch just the video, skip the feed</p>
+                        <button
+                            className="btn logout-btn"
+                            onClick={handleLogout}
+                            title="Logout"
+                        >
+                            Logout
+                        </button>
+                        <button
+                            className="btn"
+                            style={{ position: 'absolute', top: '20px', right: '220px', background: '#334155', color: '#e2e8f0', border: '1px solid #475569' }}
+                            onClick={() => setShowSetup(true)}
+                            title="Setup"
+                        >
+                            Setup
+                        </button>
+                        <button
+                            className="btn btn-settings"
+                            onClick={() => setShowSettings(true)}
+                            title="Settings"
+                        >
+                            ⚙️ Settings
+                        </button>
+                    </div>
+
+                    {/* Settings Panel */}
+                    {showSettings && (
+                        <SettingsPanel
+                            settings={botSettings}
+                            onSave={saveSettings}
+                            onResetWelcome={resetWelcomeMessage}
+                            onClose={() => setShowSettings(false)}
+                            message={settingsMessage}
+                        />
+                    )}
+
+                    <div className="grid">
+                        {/* Status Card */}
+                        <div className="card">
+                            <div className="card-title">Connection Status</div>
+                            <div className="status-indicator">
+                                <div className={`status-dot ${status.connected ? 'connected' : status.qrCode ? 'pending' : 'disconnected'}`}></div>
+                                <span className="status-text">
+                                    {status.connected ? 'Connected' : status.qrCode ? 'Awaiting Auth' : 'Disconnected'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Today's Downloads Card */}
+                        <div className="card">
+                            <div className="card-title">Today's Downloads</div>
+                            <div className="stat-number">{stats.total}</div>
+                            <div className="stat-label">Total Downloads</div>
+                            <div className="platform-stats" style={{ marginTop: '16px' }}>
+                                {Object.entries(stats.byPlatform).map(([platform, count]) => (
+                                    <div key={platform} className="platform-stat">
+                                        <span className={`platform-badge ${getPlatformClass(platform)}`}>
+                                            {platform}
+                                        </span>
+                                        <span className="count">{count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Instagram Cookies Card (when authenticated) */}
+                    {status.authenticated && (
+                        <div className="card" style={{ marginBottom: '20px' }}>
+                            <div className="card-title">Instagram Configuration</div>
+                            {status.instagramCookiesSet ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div className="success-message" style={{ margin: 0, flex: 1 }}>
+                                        Instagram cookies configured
+                                    </div>
+                                    <button className="btn btn-danger btn-sm" onClick={handleDeleteCookies}>
+                                        Delete
+                                    </button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <p style={{ color: '#94a3b8', marginBottom: '12px' }}>
+                                        Upload Instagram cookies to enable Instagram downloads.
+                                    </p>
+                                    <div
+                                        className={`upload-area ${dragging ? 'dragging' : ''}`}
+                                        onDrop={handleDrop}
+                                        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                                        onDragLeave={() => setDragging(false)}
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            style={{ display: 'none' }}
+                                            accept=".txt"
+                                            onChange={(e) => handleFileUpload(e.target.files[0])}
+                                        />
+                                        Drop cookies.txt here or click to upload
+                                    </div>
+                                </div>
+                            )}
+                            {uploadMessage && (
+                                <div className={uploadMessage.type === 'success' ? 'success-message' : 'error-message'}>
+                                    {uploadMessage.text}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Downloads by User */}
+                    {stats.byUser.length > 0 && (
+                        <div className="card" style={{ marginBottom: '20px' }}>
+                            <div className="card-title">Downloads by User</div>
+                            <div className="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>User</th>
+                                            <th>Count</th>
+                                            <th>Platforms</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {stats.byUser.map((user, idx) => (
+                                            <tr key={idx}>
+                                                <td>{user.chatName || 'Unknown'}</td>
+                                                <td>{user.count}</td>
+                                                <td>
+                                                    {user.platforms.map((p, i) => (
+                                                        <span key={i} className={`platform-badge ${getPlatformClass(p)}`}>
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="refresh-indicator">
+                                Last updated: {lastUpdate.toLocaleTimeString()}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Live Logs */}
+                    <div className="card logs-card">
+                        <div className="card-title">Live Logs</div>
+                        <div className="logs-container" ref={logsRef}>
+                            {logs.length === 0 ? (
+                                <div className="loading">Waiting for logs...</div>
+                            ) : (
+                                logs.map((log, idx) => (
+                                    <div key={idx} className="log-entry">
+                                        <span className="log-timestamp">[{log.timestamp}]</span>{' '}
+                                        <span className={`log-level-${log.level}`}>[{log.level}]</span>{' '}
+                                        <span className="log-message">{log.message}</span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

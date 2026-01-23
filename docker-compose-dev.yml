@@ -1,0 +1,32 @@
+services:
+  skipthefeed-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: skipthefeed-dev
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    volumes:
+      # Mount source code for hot-reloading
+      - .:/app
+      # Persist data directory
+      - ./data:/data
+      # Cache Go modules and build cache for faster rebuilds
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    environment:
+      - SKIPTHEFEED_DATA_DIR=/data
+      - SKIPTHEFEED_PORT=3333
+      - SKIPTHEFEED_DASHBOARD_DIR=/app/dashboard
+      # Optional: Ollama AI integration
+      # - OLLAMA_ENABLED=true
+      # - OLLAMA_URL=http://ollama:11434
+      # - OLLAMA_MODEL=mistral:7b
+    working_dir: /app
+    # Use air for hot-reloading
+    command: air -c .air.toml
+
+volumes:
+  go-mod-cache:
+  go-build-cache:

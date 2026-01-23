@@ -1,0 +1,14 @@
+*.db
+*.jpeg
+*.jpg
+*.jpe
+*.png
+*.mp4
+*.txt
+*.http
+main
+whatbot
+justtheclip
+skipthefeed
+data/
+tmp/

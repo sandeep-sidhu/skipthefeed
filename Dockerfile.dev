@@ -1,0 +1,45 @@
+# Development Dockerfile with hot-reloading support
+FROM golang:1.23-alpine
+
+# Install build dependencies and runtime tools
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    sqlite-dev \
+    ca-certificates \
+    ffmpeg \
+    python3 \
+    py3-pip \
+    sqlite \
+    tzdata \
+    git
+
+# Install yt-dlp and gallery-dl
+RUN pip3 install --break-system-packages --no-cache-dir yt-dlp gallery-dl
+
+# Allow Go to download newer toolchains if needed by dependencies
+ENV GOTOOLCHAIN=auto
+
+# Install air for hot-reloading
+RUN go install github.com/air-verse/air@latest
+
+WORKDIR /app
+
+# Copy go mod files first for caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Create data directory structure
+RUN mkdir -p /data/config /data/downloads
+
+# Environment variables
+ENV SKIPTHEFEED_DATA_DIR=/data \
+    SKIPTHEFEED_PORT=3333 \
+    SKIPTHEFEED_DASHBOARD_DIR=/app/dashboard \
+    CGO_ENABLED=1
+
+# Expose port
+EXPOSE 3333
+
+# Default command (can be overridden in docker-compose)
+CMD ["air", "-c", ".air.toml"]
