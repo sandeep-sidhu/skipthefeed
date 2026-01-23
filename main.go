@@ -93,9 +93,8 @@ var phoneticWords = []string{
 	"purple", "silver", "golden", "crystal", "thunder", "falcon",
 }
 
-// generateSimplePassword creates a memorable phonetic password
-func generateSimplePassword() string {
-	// Pick 3 random words
+// generatePassword creates a memorable phonetic password
+func generatePassword() string {
 	words := make([]string, 3)
 	for i := 0; i < 3; i++ {
 		idx := make([]byte, 1)
@@ -118,57 +117,40 @@ func hashPassword(password string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// loadAuthConfig loads or creates auth configuration
+// loadAuthConfig loads auth configuration from environment variables or generates defaults
 func loadAuthConfig() error {
-	authConfigPath := filepath.Join(cfg.DataDir, "config", "auth.json")
+	username := cfg.AdminUsername
+	password := cfg.AdminPassword
 
-	data, err := os.ReadFile(authConfigPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// First time - create default admin user
-			password := generateSimplePassword()
-			authConfig = &AuthConfig{
-				SetupDone:    true,
-				Username:     "admin",
-				PasswordHash: hashPassword(password),
-				Password:     password,
-			}
-			if err := saveAuthConfig(); err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	} else {
-		authConfig = &AuthConfig{}
-		if err := json.Unmarshal(data, authConfig); err != nil {
-			return err
-		}
+	// Generate password if not set via environment variable
+	passwordFromEnv := password != ""
+	if !passwordFromEnv {
+		password = generatePassword()
 	}
 
-	// Always display credentials on startup
+	authConfig = &AuthConfig{
+		SetupDone:    true,
+		Username:     username,
+		PasswordHash: hashPassword(password),
+		Password:     password,
+	}
+
+	// Display credentials on startup
 	fmt.Println("")
 	fmt.Println("╔════════════════════════════════════════════════════════════╗")
 	fmt.Println("║                    PORTAL CREDENTIALS                      ║")
 	fmt.Println("╠════════════════════════════════════════════════════════════╣")
 	fmt.Printf("║  Username: %-47s║\n", authConfig.Username)
 	fmt.Printf("║  Password: %-47s║\n", authConfig.Password)
+	if passwordFromEnv {
+		fmt.Println("║  (configured via environment variable)                     ║")
+	} else {
+		fmt.Println("║  (auto-generated - set SKIPTHEFEED_PASSWORD to change)     ║")
+	}
 	fmt.Println("╚════════════════════════════════════════════════════════════╝")
 	fmt.Println("")
 
 	return nil
-}
-
-// saveAuthConfig saves auth configuration
-func saveAuthConfig() error {
-	authConfigPath := filepath.Join(cfg.DataDir, "config", "auth.json")
-
-	data, err := json.MarshalIndent(authConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(authConfigPath, data, 0600)
 }
 
 // loadBotSettings loads or creates bot settings

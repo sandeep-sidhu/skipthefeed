@@ -26,7 +26,7 @@ Social media platforms are designed to keep you scrolling. You click a link to w
 - **Auto-Download**: Automatically downloads videos when links are shared
 - **Auto-Delete**: Removes the original link message to keep chats clean
 - **Web Dashboard**: Monitor activity and configure settings
-- **Portal Authentication**: Secure dashboard with auto-generated credentials
+- **Portal Authentication**: Secure dashboard with auto-generated password (configurable via environment variables)
 - **Instagram Session**: Easy Instagram login via session ID
 
 ## Quick Start with Docker
@@ -42,7 +42,7 @@ cd skipthefeed
 docker compose up -d
 ```
 
-3. Check the logs for your portal credentials:
+3. Check the logs for your auto-generated password:
 ```bash
 docker compose logs | grep -A5 "PORTAL CREDENTIALS"
 ```
@@ -105,18 +105,25 @@ Access at `http://localhost:3333`:
 
 ### Portal Credentials
 
-On first run, SkipTheFeed creates an admin account:
+A password is auto-generated on each container start. To set a fixed password, use environment variables in docker-compose.yml:
+
+```yaml
+environment:
+  - SKIPTHEFEED_USERNAME=myuser
+  - SKIPTHEFEED_PASSWORD=mypassword
+```
+
+Credentials are displayed on every container start:
 
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║                    PORTAL CREDENTIALS                      ║
 ╠════════════════════════════════════════════════════════════╣
-║  Username: admin                                          ║
-║  Password: silver-purple-victor                           ║
+║  Username: admin                                           ║
+║  Password: thunder-golf-romeo                              ║
+║  (auto-generated - set SKIPTHEFEED_PASSWORD to change)     ║
 ╚════════════════════════════════════════════════════════════╝
 ```
-
-Credentials are displayed on every container start.
 
 ## Development
 

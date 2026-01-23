@@ -13,6 +13,10 @@ type Config struct {
 	// Server port
 	Port string
 
+	// Admin credentials for dashboard
+	AdminUsername string
+	AdminPassword string
+
 	// Ollama AI configuration (optional)
 	OllamaEnabled  bool
 	OllamaURL      string
@@ -51,6 +55,10 @@ func LoadConfig() *Config {
 	cfg := &Config{
 		DataDir: dataDir,
 		Port:    getEnv("SKIPTHEFEED_PORT", "3333"),
+
+		// Admin credentials (password auto-generated if not set)
+		AdminUsername: getEnv("SKIPTHEFEED_USERNAME", "admin"),
+		AdminPassword: getEnv("SKIPTHEFEED_PASSWORD", ""),
 
 		// Ollama AI (optional)
 		OllamaEnabled:  getEnv("OLLAMA_ENABLED", "false") == "true",

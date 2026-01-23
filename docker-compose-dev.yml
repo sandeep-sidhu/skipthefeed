@@ -19,6 +19,9 @@ services:
       - SKIPTHEFEED_DATA_DIR=/data
       - SKIPTHEFEED_PORT=3333
       - SKIPTHEFEED_DASHBOARD_DIR=/app/dashboard
+      # Optional: Dashboard credentials (password auto-generated if not set)
+      # - SKIPTHEFEED_USERNAME=admin
+      # - SKIPTHEFEED_PASSWORD=yourpassword
       # Optional: Ollama AI integration
       # - OLLAMA_ENABLED=true
       # - OLLAMA_URL=http://ollama:11434
