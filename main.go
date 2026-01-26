@@ -1089,6 +1089,12 @@ func eventHandler(evtInterface interface{}) {
 
 	switch evt := evtInterface.(type) {
 	case *events.Message:
+		// Skip status broadcast messages to avoid accidentally posting responses as status updates
+		if evt.Info.Chat.Server == "broadcast" {
+			logBoth("DEBUG", "Ignoring status broadcast message")
+			return
+		}
+
 		fmt.Println("Received a message!", evt.Message.GetConversation())
 		fmt.Println("Message MediaType:", evt.Info.MediaType, "Type:", evt.Info.Type)
 		// fmt.Print("Message: ", v.Message.GetConversation())
