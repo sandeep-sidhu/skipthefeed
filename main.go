@@ -248,6 +248,9 @@ var facebookURLRegex = regexp.MustCompile(`https?://(?:www\.|m\.)?(?:facebook\.c
 // YouTube URL pattern - matches shorts, watch, and youtu.be links
 var youtubeURLRegex = regexp.MustCompile(`https?://(?:www\.)?(?:youtube\.com/(?:shorts/|watch\?v=)|youtu\.be/)([A-Za-z0-9_-]+)`)
 
+// TikTok URL pattern - matches video links and shortened URLs
+var tiktokURLRegex = regexp.MustCompile(`https?://(?:(?:www|m|vm|vt)\.)?tiktok\.com/(?:@[\w.-]+/video/\d+|[\w-]+/?)`)
+
 // Maximum file size for YouTube downloads (10MB)
 const maxYouTubeFileSize = 10 * 1024 * 1024
 
@@ -388,6 +391,9 @@ func detectPlatform(url string) string {
 	if youtubeURLRegex.MatchString(url) {
 		return "youtube"
 	}
+	if tiktokURLRegex.MatchString(url) {
+		return "tiktok"
+	}
 	return "unknown"
 }
 
@@ -407,6 +413,10 @@ func extractURLFromText(text string) string {
 	}
 	// Try YouTube
 	if urls := extractYouTubeURLs(text); len(urls) > 0 {
+		return urls[0]
+	}
+	// Try TikTok
+	if urls := extractTikTokURLs(text); len(urls) > 0 {
 		return urls[0]
 	}
 	return ""
@@ -1028,6 +1038,12 @@ func extractYouTubeURLs(text string) []string {
 	return matches
 }
 
+// extractTikTokURLs finds all TikTok URLs in a text message
+func extractTikTokURLs(text string) []string {
+	matches := tiktokURLRegex.FindAllString(text, -1)
+	return matches
+}
+
 // YouTubeVideoInfo contains video metadata from yt-dlp
 type YouTubeVideoInfo struct {
 	Filesize         int64   `json:"filesize"`
@@ -1166,10 +1182,13 @@ func eventHandler(evtInterface interface{}) {
 
 		// Extract message text for command processing
 		var messageText string
+		var matchedURL string // URL from link preview (ExtendedTextMessage)
 		if conv := evt.Message.GetConversation(); conv != "" {
 			messageText = conv
 		} else if extText := evt.Message.GetExtendedTextMessage(); extText != nil {
 			messageText = extText.GetText()
+			// Also capture the matched URL from link previews (used by Instagram/TikTok shares)
+			matchedURL = extText.GetMatchedText()
 		}
 
 		// Handle AI commands triggered with "!" prefix (only from self)
@@ -1188,8 +1207,12 @@ func eventHandler(evtInterface interface{}) {
 		}
 
 		// Auto-download any message containing a supported URL (if enabled)
-		if messageText != "" && isAutoDownloadEnabled() {
+		if (messageText != "" || matchedURL != "") && isAutoDownloadEnabled() {
+			// Try to extract URL from message text first, then fall back to matched URL from link preview
 			url := extractURLFromText(messageText)
+			if url == "" && matchedURL != "" {
+				url = extractURLFromText(matchedURL)
+			}
 			if url != "" {
 				chatJID := evt.Info.Chat
 				chatName := evt.Info.PushName
