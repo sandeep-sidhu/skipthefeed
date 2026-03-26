@@ -12,10 +12,14 @@ RUN apk add --no-cache \
     py3-pip \
     sqlite \
     tzdata \
-    git
+    git \
+    nodejs
 
 # Install yt-dlp and gallery-dl
 RUN pip3 install --break-system-packages --no-cache-dir yt-dlp gallery-dl
+
+# Configure yt-dlp to use nodejs for YouTube
+RUN mkdir -p /etc/yt-dlp && echo "--js-runtime nodejs" > /etc/yt-dlp/config
 
 # Allow Go to download newer toolchains if needed by dependencies
 ENV GOTOOLCHAIN=auto

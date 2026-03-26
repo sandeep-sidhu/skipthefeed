@@ -28,10 +28,14 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     sqlite \
-    tzdata
+    tzdata \
+    nodejs
 
 # Install yt-dlp and gallery-dl
 RUN pip3 install --break-system-packages --no-cache-dir yt-dlp gallery-dl
+
+# Configure yt-dlp to use nodejs for YouTube
+RUN mkdir -p /etc/yt-dlp && echo "--js-runtime nodejs" > /etc/yt-dlp/config
 
 # Create non-root user
 RUN adduser -D -u 1000 skipthefeed

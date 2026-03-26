@@ -1244,6 +1244,14 @@
             const [localSettings, setLocalSettings] = useState(settings || defaultSettings);
             const [saving, setSaving] = useState(false);
 
+            // Password change state
+            const [showPasswordChange, setShowPasswordChange] = useState(false);
+            const [currentPassword, setCurrentPassword] = useState('');
+            const [newPassword, setNewPassword] = useState('');
+            const [confirmPassword, setConfirmPassword] = useState('');
+            const [passwordMessage, setPasswordMessage] = useState(null);
+            const [changingPassword, setChangingPassword] = useState(false);
+
             useEffect(() => {
                 if (settings) {
                     setLocalSettings(settings);
@@ -1254,6 +1262,56 @@
                 setSaving(true);
                 await onSave(localSettings);
                 setSaving(false);
+            };
+
+            const handlePasswordChange = async () => {
+                setPasswordMessage(null);
+
+                if (!currentPassword || !newPassword || !confirmPassword) {
+                    setPasswordMessage({ type: 'error', text: 'Please fill in all password fields' });
+                    return;
+                }
+
+                if (newPassword !== confirmPassword) {
+                    setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
+                    return;
+                }
+
+                if (newPassword.length < 4) {
+                    setPasswordMessage({ type: 'error', text: 'New password must be at least 4 characters' });
+                    return;
+                }
+
+                setChangingPassword(true);
+
+                try {
+                    const res = await fetch('/api/auth/password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            currentPassword: currentPassword,
+                            newPassword: newPassword
+                        })
+                    });
+
+                    if (res.ok) {
+                        setPasswordMessage({ type: 'success', text: 'Password changed successfully!' });
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                        setTimeout(() => {
+                            setShowPasswordChange(false);
+                            setPasswordMessage(null);
+                        }, 2000);
+                    } else {
+                        const err = await res.text();
+                        setPasswordMessage({ type: 'error', text: err || 'Failed to change password' });
+                    }
+                } catch (err) {
+                    setPasswordMessage({ type: 'error', text: 'Failed to change password' });
+                } finally {
+                    setChangingPassword(false);
+                }
             };
 
             if (!localSettings) {
@@ -1325,6 +1383,88 @@
                                     </div>
                                 </div>
                             )}
+
+                            {/* Password Change Section */}
+                            <div className="setting-item-full" style={{borderTop: '1px solid #334155', paddingTop: '20px', marginTop: '8px'}}>
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <div>
+                                        <label className="setting-label">Change Password</label>
+                                        <p className="setting-desc">Update your dashboard login password</p>
+                                    </div>
+                                    {!showPasswordChange && (
+                                        <button className="btn btn-sm" onClick={() => setShowPasswordChange(true)}>
+                                            Change
+                                        </button>
+                                    )}
+                                </div>
+
+                                {showPasswordChange && (
+                                    <div style={{marginTop: '16px', background: '#0f172a', padding: '16px', borderRadius: '8px'}}>
+                                        <div className="form-group" style={{marginBottom: '12px'}}>
+                                            <label className="form-label" style={{fontSize: '0.875rem'}}>Current Password</label>
+                                            <input
+                                                type="password"
+                                                className="form-input"
+                                                value={currentPassword}
+                                                onChange={e => setCurrentPassword(e.target.value)}
+                                                disabled={changingPassword}
+                                                style={{fontSize: '0.875rem', padding: '10px 12px'}}
+                                            />
+                                        </div>
+                                        <div className="form-group" style={{marginBottom: '12px'}}>
+                                            <label className="form-label" style={{fontSize: '0.875rem'}}>New Password</label>
+                                            <input
+                                                type="password"
+                                                className="form-input"
+                                                value={newPassword}
+                                                onChange={e => setNewPassword(e.target.value)}
+                                                disabled={changingPassword}
+                                                style={{fontSize: '0.875rem', padding: '10px 12px'}}
+                                            />
+                                        </div>
+                                        <div className="form-group" style={{marginBottom: '16px'}}>
+                                            <label className="form-label" style={{fontSize: '0.875rem'}}>Confirm New Password</label>
+                                            <input
+                                                type="password"
+                                                className="form-input"
+                                                value={confirmPassword}
+                                                onChange={e => setConfirmPassword(e.target.value)}
+                                                disabled={changingPassword}
+                                                style={{fontSize: '0.875rem', padding: '10px 12px'}}
+                                            />
+                                        </div>
+
+                                        {passwordMessage && (
+                                            <div className={passwordMessage.type === 'success' ? 'success-box' : 'error-box'} style={{marginBottom: '12px'}}>
+                                                {passwordMessage.text}
+                                            </div>
+                                        )}
+
+                                        <div style={{display: 'flex', gap: '10px'}}>
+                                            <button
+                                                className="btn btn-sm"
+                                                onClick={() => {
+                                                    setShowPasswordChange(false);
+                                                    setCurrentPassword('');
+                                                    setNewPassword('');
+                                                    setConfirmPassword('');
+                                                    setPasswordMessage(null);
+                                                }}
+                                                disabled={changingPassword}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                className="btn btn-primary btn-sm"
+                                                onClick={handlePasswordChange}
+                                                disabled={changingPassword}
+                                            >
+                                                {changingPassword ? 'Changing...' : 'Update Password'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             {message && (
                                 <div className={message.type === 'success' ? 'success-box' : 'error-box'}>

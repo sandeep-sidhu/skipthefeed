@@ -57,7 +57,20 @@ var (
 	authConfigMu   sync.RWMutex
 	activeSessions = make(map[string]time.Time) // session token -> expiry
 	sessionsMu     sync.RWMutex
+
+	// Pending large downloads awaiting user confirmation
+	pendingLargeDownloads   = make(map[string]*PendingDownload) // chatJID -> pending download
+	pendingDownloadsMu      sync.RWMutex
 )
+
+// PendingDownload represents a large download awaiting user confirmation
+type PendingDownload struct {
+	URL       string
+	Platform  string
+	FileSize  int64
+	ChatName  string
+	ExpiresAt time.Time
+}
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
@@ -117,22 +130,95 @@ func hashPassword(password string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// loadAuthConfig loads auth configuration from environment variables or generates defaults
+// getAuthConfigPath returns the path to the auth config file
+func getAuthConfigPath() string {
+	return filepath.Join(cfg.DataDir, "config", "auth.json")
+}
+
+// loadAuthConfigFromFile attempts to load auth config from the saved file
+func loadAuthConfigFromFile() (*AuthConfig, error) {
+	authPath := getAuthConfigPath()
+	data, err := os.ReadFile(authPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var savedAuth AuthConfig
+	if err := json.Unmarshal(data, &savedAuth); err != nil {
+		return nil, err
+	}
+
+	return &savedAuth, nil
+}
+
+// saveAuthConfig saves the auth config to file (without the plain password)
+func saveAuthConfig() error {
+	authPath := getAuthConfigPath()
+
+	authConfigMu.RLock()
+	// Save only the hash, not the plain password
+	toSave := &AuthConfig{
+		SetupDone:    authConfig.SetupDone,
+		Username:     authConfig.Username,
+		PasswordHash: authConfig.PasswordHash,
+		Password:     "", // Don't save plain password
+	}
+	data, err := json.MarshalIndent(toSave, "", "  ")
+	authConfigMu.RUnlock()
+
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(authPath, data, 0600)
+}
+
+// loadAuthConfig loads auth configuration from saved file, environment variables, or generates defaults
 func loadAuthConfig() error {
 	username := cfg.AdminUsername
 	password := cfg.AdminPassword
-
-	// Generate password if not set via environment variable
 	passwordFromEnv := password != ""
-	if !passwordFromEnv {
-		password = generatePassword()
-	}
+	passwordFromFile := false
+	passwordGenerated := false
 
-	authConfig = &AuthConfig{
-		SetupDone:    true,
-		Username:     username,
-		PasswordHash: hashPassword(password),
-		Password:     password,
+	// Priority 1: Check if there's a saved auth config file
+	if savedAuth, err := loadAuthConfigFromFile(); err == nil && savedAuth.PasswordHash != "" {
+		// If env var is set, it takes precedence over saved config
+		if passwordFromEnv {
+			// Update saved config with new env password
+			authConfig = &AuthConfig{
+				SetupDone:    true,
+				Username:     username,
+				PasswordHash: hashPassword(password),
+				Password:     password,
+			}
+			saveAuthConfig()
+		} else {
+			// Use saved password hash
+			authConfig = &AuthConfig{
+				SetupDone:    true,
+				Username:     username,
+				PasswordHash: savedAuth.PasswordHash,
+				Password:     "(saved - check previous logs or change in settings)",
+			}
+			passwordFromFile = true
+		}
+	} else {
+		// No saved config, check env var or generate
+		if !passwordFromEnv {
+			password = generatePassword()
+			passwordGenerated = true
+		}
+
+		authConfig = &AuthConfig{
+			SetupDone:    true,
+			Username:     username,
+			PasswordHash: hashPassword(password),
+			Password:     password,
+		}
+
+		// Save the new auth config
+		saveAuthConfig()
 	}
 
 	// Display credentials on startup
@@ -141,11 +227,16 @@ func loadAuthConfig() error {
 	fmt.Println("║                    PORTAL CREDENTIALS                      ║")
 	fmt.Println("╠════════════════════════════════════════════════════════════╣")
 	fmt.Printf("║  Username: %-47s║\n", authConfig.Username)
-	fmt.Printf("║  Password: %-47s║\n", authConfig.Password)
-	if passwordFromEnv {
-		fmt.Println("║  (configured via environment variable)                     ║")
+	if passwordFromFile {
+		fmt.Println("║  Password: (using saved password from config)              ║")
+		fmt.Println("║  Change password in Settings or set SKIPTHEFEED_PASSWORD   ║")
 	} else {
-		fmt.Println("║  (auto-generated - set SKIPTHEFEED_PASSWORD to change)     ║")
+		fmt.Printf("║  Password: %-47s║\n", authConfig.Password)
+		if passwordFromEnv {
+			fmt.Println("║  (configured via environment variable)                     ║")
+		} else if passwordGenerated {
+			fmt.Println("║  (auto-generated - change in Settings panel)               ║")
+		}
 	}
 	fmt.Println("╚════════════════════════════════════════════════════════════╝")
 	fmt.Println("")
@@ -243,7 +334,8 @@ var instagramURLRegex = regexp.MustCompile(`https?://(?:www\.)?instagram\.com/(?
 var twitterURLRegex = regexp.MustCompile(`https?://(?:www\.)?(?:twitter\.com|x\.com)/\w+/status/(\d+)/?`)
 
 // Facebook URL pattern - matches videos, reels, watch, and share links
-var facebookURLRegex = regexp.MustCompile(`https?://(?:www\.|m\.)?(?:facebook\.com|fb\.watch)/(?:watch/?\?v=\d+|reel/\d+|[^/]+/videos/\d+|share/v/[A-Za-z0-9]+|[^/]+/posts/[^/\s]+)/?`)
+// share/r/ = reels, share/v/ = videos, share/p/ = posts
+var facebookURLRegex = regexp.MustCompile(`https?://(?:www\.|m\.)?(?:facebook\.com|fb\.watch)/(?:watch/?\?v=\d+|reel/\d+|[^/]+/videos/\d+|share/[rvp]/[A-Za-z0-9]+|[^/]+/posts/[^/\s]+)/?`)
 
 // YouTube URL pattern - matches shorts, watch, and youtu.be links
 var youtubeURLRegex = regexp.MustCompile(`https?://(?:www\.)?(?:youtube\.com/(?:shorts/|watch\?v=)|youtu\.be/)([A-Za-z0-9_-]+)`)
@@ -251,8 +343,8 @@ var youtubeURLRegex = regexp.MustCompile(`https?://(?:www\.)?(?:youtube\.com/(?:
 // TikTok URL pattern - matches video links and shortened URLs
 var tiktokURLRegex = regexp.MustCompile(`https?://(?:(?:www|m|vm|vt)\.)?tiktok\.com/(?:@[\w.-]+/video/\d+|[\w-]+/?)`)
 
-// Maximum file size for YouTube downloads (10MB)
-const maxYouTubeFileSize = 10 * 1024 * 1024
+// Maximum file size for YouTube downloads (20MB)
+const maxYouTubeFileSize = 20 * 1024 * 1024
 
 
 // initLogging initializes file logging
@@ -351,6 +443,44 @@ func sendTextMessage(chatJID types.JID, text string) error {
 	}
 	_, err := WamClient.SendMessage(context.Background(), chatJID, msg)
 	return err
+}
+
+// isConfirmationReply checks if the message is a yes/y/yeah confirmation
+func isConfirmationReply(text string) bool {
+	text = strings.TrimSpace(strings.ToLower(text))
+	return text == "yes" || text == "y" || text == "yeah" || text == "yep" || text == "ok" || text == "sure"
+}
+
+// checkAndHandlePendingDownload checks if there's a pending large download for this chat
+// and if the message is a confirmation, processes it. Returns true if handled.
+func checkAndHandlePendingDownload(chatJID types.JID, _, messageText string) bool {
+	if !isConfirmationReply(messageText) {
+		return false
+	}
+
+	pendingDownloadsMu.Lock()
+	pending, exists := pendingLargeDownloads[chatJID.String()]
+	if exists {
+		// Check if expired
+		if time.Now().After(pending.ExpiresAt) {
+			delete(pendingLargeDownloads, chatJID.String())
+			pendingDownloadsMu.Unlock()
+			return false
+		}
+		// Remove from pending
+		delete(pendingLargeDownloads, chatJID.String())
+	}
+	pendingDownloadsMu.Unlock()
+
+	if !exists {
+		return false
+	}
+
+	// User confirmed, proceed with download (skip size check)
+	logBoth("INFO", "User confirmed large download for chat %s: %s", chatJID.String(), pending.URL)
+	sendTextMessage(chatJID, "Downloading large video...")
+	go downloadAndSendVideoWithOptions(chatJID, pending.ChatName, pending.URL, "", true)
+	return true
 }
 
 // hasDownloadKeyword checks if text ends with "download" (case insensitive)
@@ -629,7 +759,7 @@ func processAICommand(chatJID types.JID, chatName, message string) {
 		}
 		if url != "" {
 			sendTextMessage(chatJID, "Downloading...")
-			go downloadAndSendVideo(chatJID, chatName, url)
+			go downloadAndSendVideo(chatJID, chatName, url, "")
 		} else {
 			sendTextMessage(chatJID, "Please provide a URL to download. I support Instagram, YouTube, Twitter, and Facebook.")
 		}
@@ -643,22 +773,34 @@ func processAICommand(chatJID types.JID, chatName, message string) {
 	}
 }
 
-// downloadToTemp downloads a video to temp directory and returns the file path
-func downloadToTemp(url string, platform string) ([]string, error) {
+// DownloadResult contains the downloaded file paths and metadata
+type DownloadResult struct {
+	FilePaths   []string
+	Description string
+}
+
+// downloadToTemp downloads a video to temp directory and returns the file paths and description
+func downloadToTemp(url string, platform string) (*DownloadResult, error) {
 	// Create temp directory if it doesn't exist
 	if err := os.MkdirAll(cfg.TempDownloadDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
 	// Build yt-dlp arguments
+	// Use print-to-file for description to avoid mixing with filepath output
+	descFile := filepath.Join(cfg.TempDownloadDir, fmt.Sprintf("desc_%d.txt", time.Now().UnixNano()))
 	args := []string{
+		"--no-update",
 		"-P", cfg.TempDownloadDir,
 		"-o", "%(id)s_%(autonumber)s.%(ext)s",
 		"--print", "after_move:filepath",
-		// Force H.264 (avc1) codec and mp4 format for WhatsApp compatibility
-		// WhatsApp doesn't support AV1 or VP9 codecs
-		"-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]/best",
+		"--print-to-file", "description", descFile,
+		// Prefer H.264 (avc1) codec for WhatsApp compatibility, but fall back to any codec
+		// rather than failing entirely (yt-dlp will still merge to mp4 via --merge-output-format)
+		"-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]/bestvideo+bestaudio/best",
 		"--merge-output-format", "mp4",
+		// Avoid .part file renaming issues during fragmented HLS downloads (Twitter/TikTok)
+		"--no-part",
 	}
 
 	// Add cookies for Instagram to handle authentication
@@ -677,12 +819,21 @@ func downloadToTemp(url string, platform string) ([]string, error) {
 	// If yt-dlp fails with "No video formats found" for Instagram, try gallery-dl for images
 	if err != nil && platform == "instagram" && strings.Contains(string(output), "No video formats found") {
 		logBoth("INFO", "yt-dlp found no video formats, trying gallery-dl for images...")
+		os.Remove(descFile) // Clean up desc file
 		return downloadWithGalleryDL(url)
 	}
 
 	if err != nil {
+		os.Remove(descFile) // Clean up desc file
 		return nil, fmt.Errorf("yt-dlp failed: %v, output: %s", err, string(output))
 	}
+
+	// Read description from file
+	var description string
+	if descData, err := os.ReadFile(descFile); err == nil {
+		description = strings.TrimSpace(string(descData))
+	}
+	os.Remove(descFile) // Clean up desc file
 
 	// Parse all filepaths from output (one per line for carousel posts)
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -702,11 +853,14 @@ func downloadToTemp(url string, platform string) ([]string, error) {
 		return nil, fmt.Errorf("yt-dlp did not return any valid filepaths, output: %s", string(output))
 	}
 
-	return filepaths, nil
+	return &DownloadResult{
+		FilePaths:   filepaths,
+		Description: description,
+	}, nil
 }
 
 // downloadWithGalleryDL uses gallery-dl to download images (fallback for Instagram image posts)
-func downloadWithGalleryDL(url string) ([]string, error) {
+func downloadWithGalleryDL(url string) (*DownloadResult, error) {
 	args := []string{
 		"-D", cfg.TempDownloadDir,
 		url,
@@ -743,11 +897,15 @@ func downloadWithGalleryDL(url string) ([]string, error) {
 		return nil, fmt.Errorf("gallery-dl did not return any valid filepaths, output: %s", string(output))
 	}
 
-	return filepaths, nil
+	// gallery-dl doesn't easily provide description, return empty
+	return &DownloadResult{
+		FilePaths:   filepaths,
+		Description: "",
+	}, nil
 }
 
-// sendVideoMessage sends a video file to a chat
-func sendVideoMessage(chatJID types.JID, videoPath string) error {
+// sendVideoMessage sends a video file to a chat with optional caption
+func sendVideoMessage(chatJID types.JID, videoPath string, caption string) error {
 	// Read the video file
 	videoData, err := os.ReadFile(videoPath)
 	if err != nil {
@@ -772,17 +930,20 @@ func sendVideoMessage(chatJID types.JID, videoPath string) error {
 	}
 
 	// Create video message
-	msg := &waProto.Message{
-		VideoMessage: &waProto.VideoMessage{
-			URL:           proto.String(uploaded.URL),
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
-			Mimetype:      proto.String(mimeType),
-			FileEncSHA256: uploaded.FileEncSHA256,
-			FileSHA256:    uploaded.FileSHA256,
-			FileLength:    proto.Uint64(uint64(len(videoData))),
-		},
+	videoMsg := &waProto.VideoMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(videoData))),
 	}
+	if caption != "" {
+		videoMsg.Caption = proto.String(caption)
+	}
+
+	msg := &waProto.Message{VideoMessage: videoMsg}
 
 	_, err = WamClient.SendMessage(context.Background(), chatJID, msg)
 	if err != nil {
@@ -792,8 +953,8 @@ func sendVideoMessage(chatJID types.JID, videoPath string) error {
 	return nil
 }
 
-// sendImageMessage sends an image file to a chat
-func sendImageMessage(chatJID types.JID, imagePath string) error {
+// sendImageMessage sends an image file to a chat with optional caption
+func sendImageMessage(chatJID types.JID, imagePath string, caption string) error {
 	// Read the image file
 	imageData, err := os.ReadFile(imagePath)
 	if err != nil {
@@ -818,17 +979,20 @@ func sendImageMessage(chatJID types.JID, imagePath string) error {
 	}
 
 	// Create image message
-	msg := &waProto.Message{
-		ImageMessage: &waProto.ImageMessage{
-			URL:           proto.String(uploaded.URL),
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
-			Mimetype:      proto.String(mimeType),
-			FileEncSHA256: uploaded.FileEncSHA256,
-			FileSHA256:    uploaded.FileSHA256,
-			FileLength:    proto.Uint64(uint64(len(imageData))),
-		},
+	imageMsg := &waProto.ImageMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(imageData))),
 	}
+	if caption != "" {
+		imageMsg.Caption = proto.String(caption)
+	}
+
+	msg := &waProto.Message{ImageMessage: imageMsg}
 
 	_, err = WamClient.SendMessage(context.Background(), chatJID, msg)
 	if err != nil {
@@ -928,17 +1092,33 @@ func isAutoDownloadEnabled() bool {
 }
 
 // downloadAndSendMedia downloads media from URL and sends it to the chat
-func downloadAndSendVideo(chatJID types.JID, chatName, url string) {
+// If skipSizeCheck is true, bypasses the YouTube size limit (used for confirmed large downloads)
+func downloadAndSendVideo(chatJID types.JID, chatName, url string, originalMsgID types.MessageID) {
+	downloadAndSendVideoWithOptions(chatJID, chatName, url, originalMsgID, false)
+}
+
+func downloadAndSendVideoWithOptions(chatJID types.JID, chatName, url string, originalMsgID types.MessageID, skipSizeCheck bool) {
 	platform := detectPlatform(url)
 	logBoth("INFO", "Starting download for chat %s (%s): %s [platform: %s]", chatJID.String(), chatName, url, platform)
 
-	// For YouTube, check video size before downloading
-	if platform == "youtube" {
-		ok, filesize, errMsg := checkYouTubeVideoSize(url)
+	// For YouTube, check video size before downloading (unless user confirmed)
+	if platform == "youtube" && !skipSizeCheck {
+		ok, filesize, _ := checkYouTubeVideoSize(url)
 		if !ok {
 			logBoth("WARN", "YouTube video too large (%d bytes): %s", filesize, url)
-			sendTextMessage(chatJID, errMsg)
-			recordDownload(chatJID.String(), chatName, url, platform, false)
+			// Store pending download and ask for confirmation
+			pendingDownloadsMu.Lock()
+			pendingLargeDownloads[chatJID.String()] = &PendingDownload{
+				URL:       url,
+				Platform:  platform,
+				FileSize:  filesize,
+				ChatName:  chatName,
+				ExpiresAt: time.Now().Add(5 * time.Minute), // Expires in 5 minutes
+			}
+			pendingDownloadsMu.Unlock()
+
+			sizeMB := float64(filesize) / (1024 * 1024)
+			sendTextMessage(chatJID, fmt.Sprintf("This video is %.1fMB (larger than 20MB limit). Reply with *yes* to download anyway.", sizeMB))
 			return
 		}
 		if filesize > 0 {
@@ -947,7 +1127,7 @@ func downloadAndSendVideo(chatJID types.JID, chatName, url string) {
 	}
 
 	// Download the media (may return multiple files for carousel posts)
-	mediaPaths, err := downloadToTemp(url, platform)
+	result, err := downloadToTemp(url, platform)
 	if err != nil {
 		logBoth("ERROR", "Failed to download media: %v", err)
 		sendTextMessage(chatJID, fmt.Sprintf("Failed to download: %v", err))
@@ -957,26 +1137,40 @@ func downloadAndSendVideo(chatJID types.JID, chatName, url string) {
 
 	// Clean up all temp files after sending
 	defer func() {
-		for _, path := range mediaPaths {
+		for _, path := range result.FilePaths {
 			os.Remove(path)
 		}
 	}()
 
-	logBoth("INFO", "Downloaded %d file(s): %v", len(mediaPaths), mediaPaths)
+	logBoth("INFO", "Downloaded %d file(s): %v", len(result.FilePaths), result.FilePaths)
+	if result.Description != "" {
+		logBoth("INFO", "Post description: %s", result.Description)
+	}
 
-	// Send each media file
+	// Send each media file (caption only on first item for carousel posts)
 	successCount := 0
-	for _, mediaPath := range mediaPaths {
+	for i, mediaPath := range result.FilePaths {
+		// Throttle between media uploads to avoid triggering WhatsApp rate limits
+		if i > 0 {
+			time.Sleep(3 * time.Second)
+		}
+
 		var sendErr error
+		// Only include caption on the first media item
+		caption := ""
+		if i == 0 {
+			caption = result.Description
+		}
+
 		if isImageFile(mediaPath) {
 			logBoth("INFO", "Sending image: %s", mediaPath)
-			sendErr = sendImageMessage(chatJID, mediaPath)
+			sendErr = sendImageMessage(chatJID, mediaPath, caption)
 		} else if isVideoFile(mediaPath) {
 			logBoth("INFO", "Sending video: %s", mediaPath)
-			sendErr = sendVideoMessage(chatJID, mediaPath)
+			sendErr = sendVideoMessage(chatJID, mediaPath, caption)
 		} else {
 			logBoth("WARN", "Unknown media type, trying as video: %s", mediaPath)
-			sendErr = sendVideoMessage(chatJID, mediaPath)
+			sendErr = sendVideoMessage(chatJID, mediaPath, caption)
 		}
 
 		if sendErr != nil {
@@ -992,8 +1186,18 @@ func downloadAndSendVideo(chatJID types.JID, chatName, url string) {
 		return
 	}
 
-	logBoth("INFO", "Successfully sent %d/%d media files to chat %s (%s)", successCount, len(mediaPaths), chatJID.String(), chatName)
+	logBoth("INFO", "Successfully sent %d/%d media files to chat %s (%s)", successCount, len(result.FilePaths), chatJID.String(), chatName)
 	recordDownload(chatJID.String(), chatName, url, platform, true)
+
+	// Delete the original message now that download and send succeeded
+	if originalMsgID != "" {
+		_, err := WamClient.RevokeMessage(context.Background(), chatJID, originalMsgID)
+		if err != nil {
+			logBoth("WARN", "Failed to delete original message: %v", err)
+		} else {
+			logBoth("INFO", "Deleted original message containing URL")
+		}
+	}
 
 	// Send welcome message if this chat hasn't received one yet
 	if shouldSendWelcomeMessage(chatJID.String()) {
@@ -1057,6 +1261,7 @@ type YouTubeVideoInfo struct {
 func checkYouTubeVideoSize(url string) (bool, int64, string) {
 	// Use yt-dlp to get video info without downloading
 	args := []string{
+		"--no-update",
 		"-j", // Output JSON
 		"--no-download",
 		"-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]/best",
@@ -1092,7 +1297,7 @@ func checkYouTubeVideoSize(url string) (bool, int64, string) {
 
 	if filesize > maxYouTubeFileSize {
 		sizeMB := float64(filesize) / (1024 * 1024)
-		return false, filesize, fmt.Sprintf("Video is too large (%.1fMB). Maximum size is 10MB.", sizeMB)
+		return false, filesize, fmt.Sprintf("Video is too large (%.1fMB). Maximum size is 20MB.", sizeMB)
 	}
 
 	return true, filesize, ""
@@ -1206,6 +1411,18 @@ func eventHandler(evtInterface interface{}) {
 			}
 		}
 
+		// Check for confirmation of pending large downloads
+		if messageText != "" {
+			chatJID := evt.Info.Chat
+			chatName := evt.Info.PushName
+			if chatName == "" {
+				chatName = "Unknown"
+			}
+			if checkAndHandlePendingDownload(chatJID, chatName, messageText) {
+				return // Handled as confirmation
+			}
+		}
+
 		// Auto-download any message containing a supported URL (if enabled)
 		if (messageText != "" || matchedURL != "") && isAutoDownloadEnabled() {
 			// Try to extract URL from message text first, then fall back to matched URL from link preview
@@ -1221,18 +1438,8 @@ func eventHandler(evtInterface interface{}) {
 				}
 				logBoth("INFO", "URL detected from %s, downloading: %s", chatName, url)
 
-				// Delete the original message containing the URL
-				go func() {
-					_, err := WamClient.RevokeMessage(context.Background(), chatJID, evt.Info.ID)
-					if err != nil {
-						logBoth("WARN", "Failed to delete original message: %v", err)
-					} else {
-						logBoth("INFO", "Deleted original message containing URL")
-					}
-				}()
-
-				// Download and send the media
-				go downloadAndSendVideo(chatJID, chatName, url)
+				// Download and send the media, then delete original message on success
+				go downloadAndSendVideo(chatJID, chatName, url, evt.Info.ID)
 				return
 			}
 		}
@@ -1376,6 +1583,63 @@ func handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
 		"message": "Logged out",
+	})
+}
+
+// ChangePasswordRequest represents password change request
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// handleAuthChangePassword handles password change
+func handleAuthChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Validate current password
+	authConfigMu.RLock()
+	storedHash := authConfig.PasswordHash
+	authConfigMu.RUnlock()
+
+	if hashPassword(req.CurrentPassword) != storedHash {
+		http.Error(w, "Current password is incorrect", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate new password
+	if len(req.NewPassword) < 4 {
+		http.Error(w, "New password must be at least 4 characters", http.StatusBadRequest)
+		return
+	}
+
+	// Update password
+	authConfigMu.Lock()
+	authConfig.PasswordHash = hashPassword(req.NewPassword)
+	authConfig.Password = req.NewPassword
+	authConfigMu.Unlock()
+
+	// Save to file
+	if err := saveAuthConfig(); err != nil {
+		logBoth("ERROR", "Failed to save auth config: %v", err)
+		http.Error(w, "Failed to save password", http.StatusInternalServerError)
+		return
+	}
+
+	logBoth("INFO", "Password changed successfully")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "Password changed successfully",
 	})
 }
 
@@ -1894,7 +2158,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	version := store.WAVersionContainer{121, 0, 0}
+	version := store.WAVersionContainer{2, 24, 6}
 	store.SetOSInfo("Firefox (Ubuntu)", version)
 	// If you want multiple sessions, remember their JIDs and use .GetDevice(jid) or .GetAllDevices() instead.
 	deviceStore, err := container.GetFirstDevice(context.Background())
@@ -1918,6 +2182,7 @@ func main() {
 	router.HandleFunc("/api/auth/status", handleAuthStatus).Methods("GET")
 	router.HandleFunc("/api/auth/login", handleAuthLogin).Methods("POST")
 	router.HandleFunc("/api/auth/logout", handleAuthLogout).Methods("POST")
+	router.HandleFunc("/api/auth/password", authMiddleware(handleAuthChangePassword)).Methods("POST")
 
 	// Protected API endpoints (auth required)
 	router.HandleFunc("/api/status", authMiddleware(handleAPIStatus)).Methods("GET")
